@@ -128,7 +128,15 @@
   #define TWI_ENABLE()                  { TWI_TWCR = (1 << TWEN) | (1 << TWINT); }
 
   // TWI test if TWINT Flag is set
-  #define TWI_WAIT_TILL_TWINT_IS_SET()  { while (!(TWI_TWCR & (1 << TWINT))); }
+  //#define TWI_WAIT_TILL_TWINT_IS_SET()  { while (!(TWI_TWCR & (1 << TWINT))); } LTPE
+  #define TWI_WAIT_TILL_TWINT_IS_SET()  { \
+										  uint16_t Counter = 0; \
+	                                      do \
+										  { \
+											  Counter++; \
+										  } \
+	                                      while ((!(TWI_TWCR & (1 << TWINT)) && (Counter < 0x00FF))); \
+										}
 
   // TWI status mask
   #define TWI_STATUS                    ( TWI_TWSR & 0xF8 )

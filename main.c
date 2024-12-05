@@ -8,37 +8,33 @@
 #include <avr/io.h>
 #include <avr/interrupt.h>
 #include <stdbool.h>
+#include <stdlib.h>
+#include <ctype.h>
+#include <string.h>
 
 #include "Lib/ProjectDefines.h"
 #include "Lib/Display_Lib/ssd1306.h"
 #include "Lib/UART_Lib/UART.h"
 
-//static volatile char ReceivedCharacterFromUART;
 static volatile bool CharacterReceivedFromUART = false;
 static volatile uint8_t DisplayLineCounter = 0;
 static volatile uint8_t I2C_Address = SSD1306_ADDR;
+static volatile uint8_t I2CDisplayStatus = SSD1306_SUCCESS;
 
-static volatile char DisplayBuffer[DisplayBufferSize];
-static uint8_t BufferHead = 0;
-static uint8_t BufferTail = 0;
-static uint16_t BufferOverrunCounter = 0;
-static volatile bool SkippedCharacterIndicator = false;
-static volatile char SkippedCharacter;
+static volatile RingBufferStruct RingBufferReceiver;
 
 void ReceiceCharacterFromUart(char ReceivedCharacter)
 {
-	//ReceivedCharacterFromUART = ReceivedCharacter;
-	
-	if ((BufferHead + 1) % DisplayBufferSize == BufferTail) 
+	if ((RingBufferReceiver.BufferHead + 1) % DisplayBufferSize == RingBufferReceiver.BufferTail) 
 	{
 		// Buffer is full, discard the oldest character
-		SkippedCharacter = DisplayBuffer[BufferTail];
-		SkippedCharacterIndicator = true;
-		BufferOverrunCounter++;
-		BufferTail = (BufferTail + 1) % DisplayBufferSize;
+		RingBufferReceiver.SkippedCharacter = RingBufferReceiver.DisplayBuffer[RingBufferReceiver.BufferTail];
+		RingBufferReceiver.SkippedCharacterIndicator = true;
+		RingBufferReceiver.BufferOverrunCounter++;
+		RingBufferReceiver.BufferTail = (RingBufferReceiver.BufferTail + 1) % DisplayBufferSize;
 	}
-	DisplayBuffer[BufferHead] = ReceivedCharacter;
-	BufferHead = (BufferHead + 1) % DisplayBufferSize;
+	RingBufferReceiver.DisplayBuffer[RingBufferReceiver.BufferHead] = ReceivedCharacter;
+	RingBufferReceiver.BufferHead = (RingBufferReceiver.BufferHead + 1) % DisplayBufferSize;
 	CharacterReceivedFromUART = true;
 }
 
@@ -46,100 +42,81 @@ void WriteReceivedCharacterFromUARTInDisplay()
 {
 	char ReceivedCharacterFromUARTString[2];
 	
-	while (BufferTail != BufferHead) {
+	while (RingBufferReceiver.BufferTail != RingBufferReceiver.BufferHead) 
+	{
 		SSD1306_SetPosition(0, DisplayLineCounter++);
 		SSD1306_DrawString("character : ", NORMAL);
 		
-		sprintf(ReceivedCharacterFromUARTString, "%c", DisplayBuffer[BufferTail]);
+		sprintf(ReceivedCharacterFromUARTString, "%c", RingBufferReceiver.DisplayBuffer[RingBufferReceiver.BufferTail]);
 		SSD1306_DrawString(ReceivedCharacterFromUARTString, BOLD);
 		  // Increment the cursor position for the next line
 
 		// Move the tail pointer to the next character
-		BufferTail = (BufferTail + 1) % DisplayBufferSize;
+		RingBufferReceiver.BufferTail = (RingBufferReceiver.BufferTail + 1) % DisplayBufferSize;
 		DisplayLineCounter = DisplayLineCounter % MAX_NUMBER_OF_LINES_IN_DISPLAY;
 	}
 }
 
-//void WriteReceivedCharacterFromUARTInDisplay(char ReceivedCharacterFromUART)
-//{
-	//char ReceivedCharacterFromUARTString[2];
-	//
-	//SSD1306_SetPosition(0, DisplayLineCounter++);
-	//SSD1306_DrawString("character : ", NORMAL);
-	//
-	//sprintf(ReceivedCharacterFromUARTString, "%c", ReceivedCharacterFromUART);
-	//SSD1306_DrawString(ReceivedCharacterFromUARTString, BOLD);
-		//
-	////SSD1306_UpdateScreen(I2C_Address);
-	//DisplayLineCounter = DisplayLineCounter % MAX_NUMBER_OF_LINES_IN_DISPLAY;
-//}
-
-//void WriteReceivedCharacterFromUARTInDisplay(char ReceivedCharacterFromUART)
-//{
-	//char ReceivedCharacterFromUARTString[2];
-	//
-	//SSD1306_SetPosition(0, DisplayLineCounter++);
-	//SSD1306_DrawString("character : ", NORMAL);
-	//
-	//sprintf(ReceivedCharacterFromUARTString, "%c", ReceivedCharacterFromUART);
-	//SSD1306_DrawString(ReceivedCharacterFromUARTString, BOLD);
-	//
-	////SSD1306_UpdateScreen(I2C_Address);
-	//DisplayLineCounter = DisplayLineCounter % MAX_NUMBER_OF_LINES_IN_DISPLAY;
-//}
-
-void SetOrResetPortBit(uint8_t *PointerToPort, uint8_t PortPosititon, bool PortBitValue)
+void WriteReceivedCharacterFromUARTOnUART()
 {
-	if (true == PortBitValue)
+	char ReceivedCharacterFromUARTString[2];
+	
+	while (RingBufferReceiver.BufferTail != RingBufferReceiver.BufferHead)
 	{
-		*PointerToPort |= (1 << PortPosititon);
+		printf("\ncharacter : ");
+		
+		sprintf(ReceivedCharacterFromUARTString, "%c", RingBufferReceiver.DisplayBuffer[RingBufferReceiver.BufferTail]);
+		printf(ReceivedCharacterFromUARTString);
+		printf("\n");
+		
+		// Move the tail pointer to the next character
+		RingBufferReceiver.BufferTail = (RingBufferReceiver.BufferTail + 1) % DisplayBufferSize;
 	}
-	else
-	{
-		*PointerToPort &= ~(1 << PortPosititon);
-	}
+}
+
+void I2C_0_init()
+{
+#if defined (_AVR_ATMEGA328PB_H_INCLUDED)
+	/* Enable TWI0 */
+	PRR0 &= ~(1 << PRTWI0);
+	
+	TWCR0 = (1 << TWEN)   /* TWI0: enabled */
+	| (1 << TWIE) /* TWI0 Interrupt: enabled */
+	| (0 << TWEA) /* TWI0 Acknowledge: disabled */;
+	
+	/* SCL bitrate = F_CPU / (16 + 2 * TWBR0 * TWPS value) */
+	/* Configured bit rate is 100.000kHz, based on CPU frequency 8.000MHz */
+	TWBR0 = 0x20;          /* SCL bit rate: 100.000kHZ before prescaling */
+	TWSR0 = 0x00 << TWPS0; /* SCL precaler: 1, effective bitrate = 100.000kHz */
+#else
+	/* Enable TWI */
+	PRR &= ~(1 << PRTWI);
+	
+	TWCR = (1 << TWEN)   /* TWI: enabled */
+	| (1 << TWIE) /* TWI Interrupt: enabled */
+	| (0 << TWEA) /* TWI Acknowledge: disabled */;
+	
+	/* SCL bitrate = F_CPU / (16 + 2 * TWBR * TWPS value) */
+	/* Configured bit rate is 100.000kHz, based on CPU frequency 8.000MHz */
+	TWBR = 0x20;          /* SCL bit rate: 100.000kHZ before prescaling */
+	TWSR = 0x00 << TWPS0; /* SCL precaler: 1, effective bitrate = 100.000kHz */
+#endif
 }
 
 int main(void)
 {
-	uint8_t *PortPointer;
-	uint8_t PortBitPosititon;
-	bool IsPortOn;
-	
-	PortPointer = (uint8_t *)0x0025;
-	PortBitPosititon = 1;
-	IsPortOn = true;
-	
-	SetOrResetPortBit(PortPointer, PortBitPosititon, IsPortOn);
-	PortPointer--;
-	SetOrResetPortBit(PortPointer, PortBitPosititon, IsPortOn);
-	
-	
-	//if (true == IsPortOn)
-	//{
-		//*PortPointer |= (1 << PortBitPosititon);
-	//}
-	//else
-	//{
-		//*PortPointer &= ~(1 << PortBitPosititon);
-	//}
-	//
-	//PortPointer--;
-	//if (true == IsPortOn)
-	//{
-		//*PortPointer |= (1 << PortBitPosititon);
-	//}
-	//else
-	//{
-		//*PortPointer &= ~(1 << PortBitPosititon);
-	//}
-	
+	RingBufferReceiver.BufferHead = 0;
+	RingBufferReceiver.BufferTail = 0;
+	RingBufferReceiver.BufferOverrunCounter = 0;
+	RingBufferReceiver.SkippedCharacter = false;
 	
 	SetupFunctionCallbackPointer(ReceiceCharacterFromUart);
 	// Kodelinjen herover kan også skrives som vist i den udkommenterede kodelinje 
 	// herunder. Dette skyldes, at når man i C skriver navnet på en funktion,
 	// mener man implicit adressen på funktionen !!!
 	//SetupFunctionCallbackPointer(&ReceiceCharacterFromUart);
+	
+	I2C_0_init();
 	RS232Init();
 	Enable_UART_Receive_Interrupt();
 	
@@ -147,26 +124,39 @@ int main(void)
 	sei();
 
 	// init ssd1306
-	SSD1306_Init(I2C_Address);
+	I2CDisplayStatus = SSD1306_Init(I2C_Address);
+	if (SSD1306_SUCCESS != I2CDisplayStatus)
+	{
+		printf("Display NOT properly initialized !!!\n");
+	}
+	else
+	{
+		printf("Display properly initialized !!!\n");
+	}
 
 	// clear screen
 	SSD1306_ClearScreen();
-	//SSD1306_UpdateScreen(I2C_Address);
 	
 	while (1)
 	{
 		if (true == CharacterReceivedFromUART)
 		{
 			CharacterReceivedFromUART = false;
-			//WriteReceivedCharacterFromUARTInDisplay(ReceivedCharacterFromUART);
-			WriteReceivedCharacterFromUARTInDisplay();
+			if (SSD1306_SUCCESS == I2CDisplayStatus)
+			{
+				WriteReceivedCharacterFromUARTInDisplay();
+			}
+			else
+			{
+				WriteReceivedCharacterFromUARTOnUART();
+			}
 		}
 		
-		if (true == SkippedCharacterIndicator)
+		if (true == RingBufferReceiver.SkippedCharacterIndicator)
 		{
-			SkippedCharacterIndicator = false;
-			printf("\nSkipped character from Uart %c\n", SkippedCharacter);
-			printf("Number of Skipped Characters : %d\n", BufferOverrunCounter);
+			RingBufferReceiver.SkippedCharacterIndicator = false;
+			printf("\nSkipped character from Uart %c\n", RingBufferReceiver.SkippedCharacter);
+			printf("Number of Skipped Characters : %d\n", RingBufferReceiver.BufferOverrunCounter);
 		}
 	}
 }

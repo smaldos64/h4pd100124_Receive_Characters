@@ -7,6 +7,8 @@
 
 #include <avr/io.h>
 #include <avr/interrupt.h>
+#include <stdbool.h>
+#include <ctype.h>
 
 #include "../ProjectDefines.h"
 #include "UART.h"

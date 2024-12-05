@@ -19,4 +19,14 @@ typedef void (*Function_Pointer_With_One_Char_Parameter)(char);
 
 #define DisplayBufferSize	64 
 
+typedef struct
+{
+	volatile char DisplayBuffer[DisplayBufferSize];
+	volatile uint8_t BufferHead;
+	volatile uint8_t BufferTail;
+	volatile uint16_t BufferOverrunCounter;
+	volatile bool SkippedCharacterIndicator;
+	volatile char SkippedCharacter;
+} RingBufferStruct;
+
 #endif /* PROJECTDEFINES_H_ */

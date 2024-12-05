@@ -16,6 +16,10 @@
  */
  
 // include libraries
+#include <avr/io.h>  // LTPE
+#include <stdbool.h> // LTPE
+#include <stdlib.h>  // LTPE
+#include <ctype.h>   // LTPE
 #include "../ProjectDefines.h"
 #include "twi.h"
 
