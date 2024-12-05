@@ -38,39 +38,39 @@ void ReceiceCharacterFromUart(char ReceivedCharacter)
 	CharacterReceivedFromUART = true;
 }
 
-void WriteReceivedCharacterFromUARTInDisplay()
+void WriteReceivedCharacterFromUARTInDisplay(volatile RingBufferStruct RingBufferStructPointerVariable)
 {
 	char ReceivedCharacterFromUARTString[2];
 	
-	while (RingBufferReceiver.BufferTail != RingBufferReceiver.BufferHead) 
+	while (RingBufferStructPointerVariable.BufferTail != RingBufferStructPointerVariable.BufferHead) 
 	{
 		SSD1306_SetPosition(0, DisplayLineCounter++);
 		SSD1306_DrawString("character : ", NORMAL);
 		
-		sprintf(ReceivedCharacterFromUARTString, "%c", RingBufferReceiver.DisplayBuffer[RingBufferReceiver.BufferTail]);
+		sprintf(ReceivedCharacterFromUARTString, "%c", RingBufferStructPointerVariable.DisplayBuffer[RingBufferStructPointerVariable.BufferTail]);
 		SSD1306_DrawString(ReceivedCharacterFromUARTString, BOLD);
 		  // Increment the cursor position for the next line
 
 		// Move the tail pointer to the next character
-		RingBufferReceiver.BufferTail = (RingBufferReceiver.BufferTail + 1) % DisplayBufferSize;
+		RingBufferStructPointerVariable.BufferTail = (RingBufferStructPointerVariable.BufferTail + 1) % DisplayBufferSize;
 		DisplayLineCounter = DisplayLineCounter % MAX_NUMBER_OF_LINES_IN_DISPLAY;
 	}
 }
 
-void WriteReceivedCharacterFromUARTOnUART()
+void WriteReceivedCharacterFromUARTOnUART(volatile RingBufferStruct *RingBufferStructPointer)
 {
 	char ReceivedCharacterFromUARTString[2];
 	
-	while (RingBufferReceiver.BufferTail != RingBufferReceiver.BufferHead)
+	while (RingBufferStructPointer->BufferTail != RingBufferStructPointer->BufferHead)
 	{
 		printf("\ncharacter : ");
 		
-		sprintf(ReceivedCharacterFromUARTString, "%c", RingBufferReceiver.DisplayBuffer[RingBufferReceiver.BufferTail]);
+		sprintf(ReceivedCharacterFromUARTString, "%c", RingBufferStructPointer->DisplayBuffer[RingBufferStructPointer->BufferTail]);
 		printf(ReceivedCharacterFromUARTString);
 		printf("\n");
 		
 		// Move the tail pointer to the next character
-		RingBufferReceiver.BufferTail = (RingBufferReceiver.BufferTail + 1) % DisplayBufferSize;
+		RingBufferStructPointer->BufferTail = (RingBufferStructPointer->BufferTail + 1) % DisplayBufferSize;
 	}
 }
 
@@ -144,11 +144,11 @@ int main(void)
 			CharacterReceivedFromUART = false;
 			if (SSD1306_SUCCESS == I2CDisplayStatus)
 			{
-				WriteReceivedCharacterFromUARTInDisplay();
+				WriteReceivedCharacterFromUARTInDisplay(RingBufferReceiver);
 			}
 			else
 			{
-				WriteReceivedCharacterFromUARTOnUART();
+				WriteReceivedCharacterFromUARTOnUART(&RingBufferReceiver);
 			}
 		}
 		
